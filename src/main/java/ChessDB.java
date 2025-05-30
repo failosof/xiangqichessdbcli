@@ -1,8 +1,4 @@
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -85,39 +81,13 @@ public class ChessDB {
         }
     }
 
-    public List<Move> moves(String fen) throws IOException {
+    public static List<Move> moves(String fen) throws IOException {
         var fenEncoded = URLEncoder.encode(fen, StandardCharsets.UTF_8);
-        var url = new URL(API_URL + "/chessdb.php?action=queryall&learn=1&showall=1&board=" + fenEncoded);
-        var response = get(url);
+        var response = HttpUtil.get(API_URL + "/chessdb.php?action=queryall&learn=1&showall=1&board=" + fenEncoded);
         return Arrays.stream(response.split("\\|"))
                 .map(String::trim)
                 .filter(part -> !part.isEmpty())
                 .map(Move::from)
                 .toList();
-    }
-
-    private String get(URL url) throws IOException {
-        var connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(10000);
-
-        int responseCode = connection.getResponseCode();
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new IOException("HTTP error code: " + responseCode);
-        }
-
-        var response = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-        } finally {
-            connection.disconnect();
-        }
-
-        return response.toString();
     }
 }

@@ -1,20 +1,31 @@
 import java.io.IOException;
 import java.util.List;
+import java.util.*;
 import java.util.regex.*;
 import org.jsoup.*;
-import org.jsoup.nodes.*;
-import org.jsoup.select.*;
-import java.util.*;
+import org.jsoup.nodes.Document;
+
 
 public class DPXQ {
     private static final String API_URL = "http://dpxq.com/hldcg/search/";
-    private static final Pattern XQQB =Pattern.compile("([rnbakcp\\d]{1,9}/){9}[rnbakcp\\d]{1,9}( [rb])?", Pattern.CASE_INSENSITIVE);
+    private static final String API_SEARCH_URL_TEMPLATE = API_URL + "search.asp?site=&owner=&e=&p=%s%s&red=&black=&title=&date=&class=&event=&open=&result=&page=%d&order=";
+    private static final String API_VIEW_URL_TEMPLATE = API_URL + "view.asp?owner=m&id=%d";
+
+    private static final Pattern XQQB = Pattern.compile("([rnbakcp\\d]{1,9}/){9}[rnbakcp\\d]{1,9}( [rb])?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DhtmlXQ_movelist = Pattern.compile("var\\s+DhtmlXQ_movelist\\s*=\\s*'\\[DhtmlXQ_movelist\\](.*?)\\[/DhtmlXQ_movelist\\]';");
 
     public record Move(String move, int games, int redWins, int blackWins, int draws) {
         @Override
         public String toString() {
-            return String.format("Move: %s, Games: %d, Red: %d, Black: %d, Draw: %d%%",
+            return String.format("Move: %s, Games: %d, Red: %d, Black: %d, Draw: %d",
                     move, games, redWins, blackWins, draws);
+        }
+    }
+
+    public record GameInfo(int id, String name, int popularity) {
+        @Override
+        public String toString() {
+            return String.format("%d: %s (%d)", id, name, popularity);
         }
     }
 
@@ -50,15 +61,15 @@ public class DPXQ {
     }
 
     public static List<Move> moves(String index) throws IOException {
-        var url = API_URL + "search.asp?site=&owner=&e=&p=" + index + "tree&red=&black=&title=&date=&class=&event=&open=&result=&page=&order=";
+        var url = API_SEARCH_URL_TEMPLATE.formatted(index, "tree", 1);
         var response = HttpUtil.get(url);
         var doc = Jsoup.parse(response);
         var table = doc.getElementById("m_tree");
-        var moves = new ArrayList<Move>();
+        var moves = new LinkedList<Move>();
         if (table == null) return moves;
 
-        Elements rows = table.select("tbody > tr");
-        for (Element row : rows) {
+        var rows = table.select("tbody > tr");
+        for (var row : rows) {
             var cols = row.select("td");
             if (cols.size() == 6) {
                 var first = cols.getFirst();
@@ -77,8 +88,61 @@ public class DPXQ {
         return moves;
     }
 
-    public static String toUCCI(String code) {
-        if (code == null || code.length() != 4) throw new IllegalArgumentException("Code must be 4 chars");
+    public static List<GameInfo> games(String index, int page) throws IOException {
+        assert page > 0 : "Page must be greater than 0";
+
+        var url = API_SEARCH_URL_TEMPLATE.formatted(index, "next", page);
+        var response = HttpUtil.get(url);
+        var doc = Jsoup.parse(response);
+        var tables = doc.select("table");
+        var infos = new LinkedList<GameInfo>();
+        if (tables.size() < 2) return infos;
+
+        var rows = tables.get(1).select("tr");
+        for (var row : rows) {
+            var cols = row.select("td");
+            if (cols.size() == 3) {
+                var first = cols.getFirst();
+                var last = cols.getLast();
+                if (!first.select("a").isEmpty() && !last.select("a").isEmpty()) {
+                    var id = Integer.parseInt(first.text());
+                    var name = cols.get(1).text();
+                    var popularity = Integer.parseInt(cols.get(2).text());
+                    infos.add(new GameInfo(id, name, popularity));
+                }
+            }
+        }
+
+        return infos;
+    }
+
+    public static String game(int id) throws IOException {
+        var url = API_VIEW_URL_TEMPLATE.formatted(id);
+        var response = HttpUtil.get(url);
+        var doc = Jsoup.parse(response);
+        var moveList = findMoveList(doc);
+        var game = doc.getElementById("dhtmlxq_view");
+        if (game == null) return "";
+        return setMoveList(game.text(), moveList);
+    }
+
+    private static String findMoveList(Document doc) {
+        var scripts = doc.select("script");
+        for (var script : scripts) {
+            var matcher = DhtmlXQ_movelist.matcher(script.html());
+            if (matcher.find()) return matcher.group(1);
+        }
+        return "";
+    }
+
+    private static String setMoveList(String game, String moveList) {
+        var escaped = Pattern.quote("[DhtmlXQ_movelist]") + ".*?" + Pattern.quote("[/DhtmlXQ_movelist]");
+        return game.replaceAll(escaped,
+                Matcher.quoteReplacement("[DhtmlXQ_movelist]" + moveList + "[/DhtmlXQ_movelist]"));
+    }
+
+    private static String toUCCI(String code) {
+        assert code.length() == 4 : "Code must be 4 chars";
         int x1 = code.charAt(0) - '0';
         int y1 = code.charAt(1) - '0';
         int x2 = code.charAt(2) - '0';

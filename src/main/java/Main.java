@@ -3,7 +3,7 @@ import java.io.IOException;
 public class Main {
     public static void main(String[] args) {
         var fen = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C3C3/9/RNBAKABNR b";
-//        var fen = "rnbaka1nr/9/1c2b2c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2B2C1/9/RN1AKABNR w";
+        var index = DPXQ.fenToIndex(fen);
         try {
             var computerMoves = ChessDB.moves(fen);
             System.out.println("Computer Moves");
@@ -15,7 +15,6 @@ public class Main {
             }
 
             System.out.println("Human Moves");
-            var index = DPXQ.fenToIndex(fen);
             var humanMoves = DPXQ.moves(index);
             System.out.println("Position: " + fen);
             System.out.println("Number of possible moves: " + humanMoves.size());
@@ -23,6 +22,15 @@ public class Main {
                 var move = humanMoves.get(i);
                 System.out.println((i + 1) + ". " + move);
             }
+
+            System.out.println("Games");
+            var games = DPXQ.games(index, 1);
+            for (var game : games) {
+                System.out.println(game);
+            }
+            var game = DPXQ.game(games.getFirst().id());
+            System.out.println("First game text:");
+            System.out.println(game);
         } catch (IOException e) {
             System.err.println("Error getting moves: " + e.getMessage());
         }
